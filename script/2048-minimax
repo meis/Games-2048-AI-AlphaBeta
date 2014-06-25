@@ -1,0 +1,17 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use 5.012;
+
+use FindBin;
+use lib "lib";
+use Games::2048;
+use Games::2048::AI::AlphaBeta;
+Games::2048->new(
+	game_class => "Games::2048::AI::AlphaBeta",
+	no_save_game => 1,
+	no_restore_game => 1,
+	no_animations => 1,
+	# no_frame_delay => 1,
+)->run;
