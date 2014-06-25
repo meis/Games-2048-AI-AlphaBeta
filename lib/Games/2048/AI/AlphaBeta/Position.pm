@@ -2,7 +2,6 @@ package Games::2048::AI::AlphaBeta::Position;
 use v5.12;
 use base qw(Games::AlphaBeta::Position);
 
-use Data::Dumper;
 my @vecs = ([-1, 0], [1, 0], [0, -1], [0, 1]);
 
 sub init {
@@ -41,7 +40,6 @@ sub apply {
     }
     $self->game($game);
 
-#say Dumper($move);
     $self->switch_player;
 
     $self;
@@ -51,7 +49,6 @@ sub endpos { }          # optional
 sub findmoves {
     my $self = shift;
 
-    #return unless my $game = dclone $self->game;
     my @moves;
 
     if ( $self->player ) {
@@ -74,23 +71,23 @@ sub evaluate {
     my $self = shift;
 
     my $board = $self->game->_tiles;
+    my $free_cells = $self->game->available_cells;
 
-    my $max_value       = 1 * $self->_max_value;
-    my $max_in_corner   = 500 * $self->_max_in_corner($self->_max_value);
-    my $grows           = 0.5 * $self->_grows;
-    my $game_score      = 1 * $self->_game_score;
-    my $tiles_score     = 1  * $self->_tiles_score;
-    my $available_cells = 2 * ( -16 + $self->game->available_cells ) ;
+    my $max_value       = 1.5 * $self->_max_value;
+    my $max_in_corner   = 1.2 * $self->_max_in_corner($self->_max_value);
+    my $grows           = 0.00002 * $self->_grows;
+    my $available_cells = 3 * $free_cells ? log($self->game->available_cells) : 0 ;
+    my $smoothness      = 0.4 * $self->_smoothness;
 
     my $score = 0                +
                 $max_value       +
-                $game_score      +
                 $max_in_corner   +
+                $smoothness      +
                 $available_cells +
-                $tiles_score     +
                 $grows           ;
 
     $score++ if $self->game->_tiles->[0][0];
+
     return $self->player? $score: -$score;
 }
 
@@ -192,19 +189,39 @@ sub _max_in_corner {
     return 0;
 }
 
-sub to_string {
+sub _smoothness {
     my $self = shift;
-    my $t = $self->game->_tiles;
+    my $board = $self->game->_tiles;
 
-    say "|" . $self->print_cell($t->[0][0]) . "|" . $self->print_cell($t->[0][1]) . "|" . $self->print_cell($t->[0][2]) . "|". $self->print_cell($t->[0][3]) . "|";
-    say "|" . $self->print_cell($t->[1][0]) . "|" . $self->print_cell($t->[1][1]) . "|" . $self->print_cell($t->[1][2]) . "|". $self->print_cell($t->[1][3]) . "|";
-    say "|" . $self->print_cell($t->[2][0]) . "|" . $self->print_cell($t->[2][1]) . "|" . $self->print_cell($t->[2][2]) . "|". $self->print_cell($t->[2][3]) . "|";
-    say "|" . $self->print_cell($t->[3][0]) . "|" . $self->print_cell($t->[3][1]) . "|" . $self->print_cell($t->[3][2]) . "|". $self->print_cell($t->[3][3]) . "|";
+    my $smoothness = 0;
+    for my $x ( 0..3 ) {
+        for my $y ( 0..3 ) {
+            if ( my $cell = $board->[$x][$y] ) {
+                my $value = log($cell->value) / log(2);
+                for my $vector ( ([1, 0], [0, 1] )) {
+                    if ( my $target = $self->find_farthest( $x, $y, $vector) ) {
+                        my $target_value = log($target->value) / log(2);
+                        $smoothness -= abs($value - $target_value);
+                    }
+                }
+            }
+        }
+    }
+    return $smoothness;
 }
 
-sub print_cell {
-    my ( $self, $cell ) = @_;
-    sprintf("%04d", $cell ? $cell->value : 0);
+sub find_farthest {
+    my ( $self, $x, $y , $vector ) = @_;
+
+    my $cell;
+
+    while ( !$cell && $x <= 3 && $y <= 3 ) {
+        $x += $vector->[0];
+        $y += $vector->[1];
+        $cell = $self->game->_tiles->[$x][$y];
+    }
+
+    return $cell;
 }
 
 1;

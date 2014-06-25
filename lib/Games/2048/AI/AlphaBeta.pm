@@ -3,18 +3,12 @@ use 5.012;
 use Moo;
 use Games::AlphaBeta;
 use Games::2048::AI::AlphaBeta::Position;
-use Data::Dumper;
+use Storable qw/dclone/;
 
 extends 'Games::2048::Game::Input';
 
-use Storable qw/dclone/;
-
-my @vecs = ([-1, 0], [1, 0], [0, -1], [0, 1]);
-my @names = qw/left right up down/;
-
-has toggle    => is => 'rw', default => 0;
-has toggle_xy => is => 'rw', default => 0;
-has lowest    => is => 'rw', default => 0;
+has played    => is => 'rw', default => 1;
+has max_plays => is => 'rw', default => 10;
 
 sub handle_input {
 	my ($self, $app) = @_;
@@ -26,35 +20,30 @@ sub handle_input {
     my $abmove = $game->abmove;
     my $move = $game->peek_move;
     $self->move([$move->[0], $move->[1]]);
-
-#<STDIN>;
-
-	$self->next::method($app);
 }
 
 sub get_ply {
     my $self = shift;
 
-return 1;
     my $available = $self->available_cells;
 
-    return 5  if $available < 3;
-    return 5  if $available < 6;
-    return 4  if $available < 12;
+    return 4  if $available < 2;
     return 3;
-}
-
-sub draw_score {
-	my $self = shift;
-	$self->score_height(2);
-
-	printf "lowest: %d, toggle: %d, toggle_xy: %d\n",
-		$self->lowest, $self->toggle, $self->toggle_xy;
-
-	$self->next::method;
 }
 
 # disable vector input from the user
 sub handle_input_key_vector {}
+
+sub handle_finish {
+	my ($self, $app) = @_;
+
+    $self->played($self->played+1);
+    if ( $self->played < $self->max_plays ) {
+        $app->restart;
+    }
+    else {
+        $app->quit;
+    }
+}
 
 1;
