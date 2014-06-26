@@ -5,7 +5,7 @@ use base qw(Games::AlphaBeta::Position);
 my @vecs = ([-1, 0], [1, 0], [0, -1], [0, 1]);
 
 sub init {
-    my ( $self, $game ) = @_;
+    my ($self, $game) = @_;
     $self->player(1);
     $self->game($game);
     return $self;
@@ -29,130 +29,117 @@ sub game {
 
 # Methods required by Games::AlphaBeta
 sub apply {
-    my ( $self, $move ) = @_;
+    my ($self, $m) = @_;
 
-    my $game = dclone $self->game;
+    my $g = dclone $self->game;
     if ( $self->player) {
-        $game->move_tiles([$move->[0], $move->[1]]);
+        $g->move_tiles([$m->[0], $m->[1]]);
     }
     else {
-        $game->insert_tile([$move->[0], $move->[1]],$move->[2]);
+        $g->insert_tile([$m->[0], $m->[1]],$m->[2]);
     }
-    $self->game($game);
+    $self->game($g);
 
     $self->switch_player;
 
     $self;
 }
-sub endpos { }          # optional
 
 sub findmoves {
     my $self = shift;
 
-    my @moves;
+    my @m;
 
     if ( $self->player ) {
         for (0..3) {
             my $g = dclone $self->game;
 
             my $move = $vecs[$_];
-            if ($g->move_tiles($move)) {
-                push @moves, $move;
-            }
+            push (@m, $move) if ($g->move_tiles($move));
         }
     }
     else {
-        @moves = map { ([$_->[0], $_->[1], 2], [$_->[0], $_->[1], 4]) } $self->game->available_cells;
+        @m = map { ([$_->[0], $_->[1], 2], [$_->[0], $_->[1], 4]) } $self->game->available_cells;
     }
-    @moves;
+
+    @m;
 }
 
 sub evaluate {
     my $self = shift;
 
-    my $board = $self->game->_tiles;
-    my $free_cells = $self->game->available_cells;
+    my $free = $self->game->available_cells;
+    my $max  = $self->_max_value;
 
-    my $max_value       = 1.5 * $self->_max_value;
-    my $max_in_corner   = 1.2 * $self->_max_in_corner($self->_max_value);
-    my $grows           = 0.00002 * $self->_grows;
-    my $available_cells = 3 * $free_cells ? log($self->game->available_cells) : 0 ;
-    my $smoothness      = 0.4 * $self->_smoothness;
+    my $s = 0
+        + 3       * $max
+        + 2       * $self->_in_corner($max)
+        + 0.00001 * $self->_growth
+        + 3       * ($free ? log($free) : 0 )
+        + 0.2     * $self->_smoothness;
 
-    my $score = 0                +
-                $max_value       +
-                $max_in_corner   +
-                $smoothness      +
-                $available_cells +
-                $grows           ;
+    # I prefer this corner
+    $s++ if $self->game->_tiles->[0][0];
 
-    $score++ if $self->game->_tiles->[0][0];
-
-    return $self->player? $score: -$score;
+    return $self->player? $s: -$s;
 }
 
-sub _game_score { shift->game->score }
+sub _growth {
+    my $self = shift;
+
+    my $t = $self->game->_tiles;
+
+    my $s = 0;
+    $s += $self->_grows( $t->[0][0], $t->[0][1], $t->[0][2], $t->[0][3] ) * 2;
+    $s += $self->_grows( $t->[1][0], $t->[1][1], $t->[1][2], $t->[1][3] );
+    $s += $self->_grows( $t->[2][0], $t->[2][1], $t->[2][2], $t->[2][3] );
+    $s += $self->_grows( $t->[3][0], $t->[3][1], $t->[3][2], $t->[3][3] ) * 2;
+
+    $s += $self->_grows( $t->[0][0], $t->[1][0], $t->[2][0], $t->[3][0] ) * 2;
+    $s += $self->_grows( $t->[0][1], $t->[1][1], $t->[2][1], $t->[3][1] );
+    $s += $self->_grows( $t->[0][2], $t->[1][2], $t->[2][2], $t->[3][2] );
+    $s += $self->_grows( $t->[0][3], $t->[1][3], $t->[2][3], $t->[3][3] ) * 2;
+
+    $s;
+}
 
 sub _grows {
     my $self = shift;
-    my $t = $self->game->_tiles;
 
-    my $score = 0;
-    $score += $self->_list_grows( $t->[0][0], $t->[0][1], $t->[0][2], $t->[0][3] ) * 2;
-    $score += $self->_list_grows( $t->[1][0], $t->[1][1], $t->[1][2], $t->[1][3] );
-    $score += $self->_list_grows( $t->[2][0], $t->[2][1], $t->[2][2], $t->[2][3] );
-    $score += $self->_list_grows( $t->[3][0], $t->[3][1], $t->[3][2], $t->[3][3] ) * 2;
-
-    $score += $self->_list_grows( $t->[0][0], $t->[1][0], $t->[2][0], $t->[3][0] ) * 2;
-    $score += $self->_list_grows( $t->[0][1], $t->[1][1], $t->[2][1], $t->[3][1] );
-    $score += $self->_list_grows( $t->[0][2], $t->[1][2], $t->[2][2], $t->[3][2] );
-    $score += $self->_list_grows( $t->[0][3], $t->[1][3], $t->[2][3], $t->[3][3] ) * 2;
-
-    $score;
-}
-
-sub _list_grows {
-    my $self = shift;
     my @list = @_;
     return 0 unless my @values = map { $_->value }
-                                 grep {$_} @list;
+                                 grep {$_} @_;
 
     # List of 1 does not grow
-    return 0 if @list == 1;
-    my $sorted = $self->_values_sorted(@values) || $self->_values_sorted(reverse @values);
-    return $sorted * @list;
+    return 0 if @_ == 1;
+    my $s = $self->_sorted(@values) || $self->_sorted(reverse @values);
+    return $s * @_;
 }
 
-sub _values_sorted {
+sub _sorted {
     my $self = shift;
-    my @values = @_;
 
     my $idx = 0;
-    my $last_val = $values[$idx];
-    my $sorted = $last_val;
+    my $last = $_[$idx];
+    my $s = $last;
 
-    while ( my $new_val = $values[$idx++] ) {
-        if ( $new_val < $last_val ) {
-            $sorted = 0;
-        }
-        else {
-            $sorted += $new_val * $new_val;
-        }
-        $last_val = $new_val;
+    while ( my $new = $_[$idx++] ) {
+        return 0 if ( $new < $last );
+        $s += $new * $new;
+        $last = $new;
     }
 
-    $sorted;
+    $s;
 }
 
 sub _max_value {
     my $self = shift;
 
-    my $board = $self->game->_tiles;
-
     my $max = 0;
-    for my $y ( @$board ) {
-        for my $x ( @$y ) {
-            if ( $x ) {
+
+    for my $y (@{$self->game->_tiles}) {
+        for my $x (@$y) {
+            if ($x) {
                 $max = $x->value if $x->value > $max;
             }
         }
@@ -160,58 +147,43 @@ sub _max_value {
     return $max;
 }
 
-sub _tiles_score {
-    my $self = shift;
+sub _in_corner {
+    my ($self, $max) = @_;
 
-    my $board = $self->game->_tiles;
+    my $t = $self->game->_tiles;
 
-    my $score= 0;
-    for my $y ( @$board ) {
-        for my $x ( @$y ) {
-            if ( $x ) {
-                $score += $x->value * $x->value;;
-            }
-        }
-    }
-    return $score;
-}
-
-sub _max_in_corner {
-    my ( $self, $max ) = @_;
-
-    my $board = $self->game->_tiles;
-
-    return $max if $board->[0][0] && $board->[0][0]->value == $max;
-    return $max if $board->[0][3] && $board->[0][3]->value == $max;
-    return $max if $board->[3][0] && $board->[3][0]->value == $max;
-    return $max if $board->[3][3] && $board->[3][3]->value == $max;
+    return $max if $t->[0][0] && $t->[0][0]->value == $max;
+    return $max if $t->[0][3] && $t->[0][3]->value == $max;
+    return $max if $t->[3][0] && $t->[3][0]->value == $max;
+    return $max if $t->[3][3] && $t->[3][3]->value == $max;
 
     return 0;
 }
 
 sub _smoothness {
     my $self = shift;
-    my $board = $self->game->_tiles;
 
-    my $smoothness = 0;
+    my $t = $self->game->_tiles;
+
+    my $s = 0;
     for my $x ( 0..3 ) {
         for my $y ( 0..3 ) {
-            if ( my $cell = $board->[$x][$y] ) {
+            if ( my $cell = $t->[$x][$y] ) {
                 my $value = log($cell->value) / log(2);
                 for my $vector ( ([1, 0], [0, 1] )) {
                     if ( my $target = $self->find_farthest( $x, $y, $vector) ) {
                         my $target_value = log($target->value) / log(2);
-                        $smoothness -= abs($value - $target_value);
+                        $s -= abs($value - $target_value);
                     }
                 }
             }
         }
     }
-    return $smoothness;
+    return $s;
 }
 
 sub find_farthest {
-    my ( $self, $x, $y , $vector ) = @_;
+    my ($self, $x, $y, $vector) = @_;
 
     my $cell;
 
